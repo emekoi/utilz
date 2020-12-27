@@ -1,52 +1,31 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const tools = @import("build_tools.zig");
+const sys = @import("build_sys.zig");
 
 const Builder = std.build.Builder;
-const Pkg = std.build.Pkg;
 
-const binaries = .{
+const packages = [_]sys.Package{
     .{
         .name = "pal",
-        .path = "pal/pal.zig",
-        .dependencies = .{"known-folders"},
+        .source = .{ .Local = "pal/pal.zig" },
+        .dependencies = &[_]sys.Package{
+            .{
+                .name = "known-folders",
+                .source = .{ .Git = .{ "https://github.com/ziglibs/known-folders.git", "known-folders/known-folders.zig" } },
+            },
+            .{
+                .name = "clap",
+                .source = .{ .Git = .{ "https://github.com/Hejsil/zig-clap.git", "zig-clap/clap.zig" } },
+            },
+        },
     },
 };
 
-const packages = .{
-    .{ .name = "known-folders", .path = "deps/known-folders/known-folders.zig" },
-    .{ .name = "clap", .path = "deps/zig-clap/clap.zig" },
-};
-
-fn addBinary(comptime bin: anytype, b: *Builder, target: std.zig.CrossTarget, mode: builtin.Mode) void {
-    const exe = b.addExecutable(bin.name, bin.path);
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
-    exe.install();
-
-    const run_cmd = exe.run();
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
-    inline for (bin.dependencies) |dep| {
-        inline for (packages) |pkg| {
-            if (comptime std.mem.eql(u8, pkg.name, dep)) {
-                exe.addPackagePath(pkg.name, pkg.path);
-            }
-        }
-    }
-
-    const run_step = b.step(bin.name, "run " ++ bin.name);
-    run_step.dependOn(&run_cmd.step);
-}
-
-pub fn build(b: *Builder) void {
+pub fn build(b: *Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
-    inline for (binaries) |bin| {
-        addBinary(bin, b, target, mode);
+    for (packages) |p| {
+        try p.build(b, target, mode);
     }
 }
