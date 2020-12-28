@@ -23,6 +23,10 @@ const packages = [_]sys.Package{
                 .name = "clap",
                 .source = .{ .Git = .{ "https://github.com/Hejsil/zig-clap.git", "zig-clap/clap.zig" } },
             },
+            .{
+                .name = "stb",
+                .source = .{ .Local = "stb/stb.zig" },
+            },
         },
     },
 };

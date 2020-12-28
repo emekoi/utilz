@@ -1,6 +1,6 @@
 <h1 align="center">stb</h1>
 
-a small wrapper for `stb_image` that integrates with zig's allocator interface.
+a small wrapper for `stb_image` that integrates with zig's allocator interface. sadly i was not able to get this to compile successfully without `libc`.
 
 ## example
 ```zig
