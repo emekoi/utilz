@@ -1,3 +1,9 @@
+//  Copyright (c) 2020 emekoi
+//
+//  This library is free software; you can redistribute it and/or modify it
+//  under the terms of the MIT license. See LICENSE for details.
+//
+
 const std = @import("std");
 const mem = std.mem;
 
@@ -37,51 +43,47 @@ pub const Palette = struct {
     cursor: Color,
     colors: [16]Color,
 
-    pub fn showCurrent(writer: Writer) Writer.Error!void {
+    pub fn showCurrent(out_stream: anytype) !void {
         var i: usize = 0;
 
         while (i < 8) : (i += 1) {
-            try writer.print("\x1b[48;5;{}m  \x1b[0m", .{i});
+            try std.fmt.format(out_stream, "\x1b[48;5;{}m  \x1b[0m", .{i});
         }
-        try writer.print("\n", .{});
+        try std.fmt.format(out_stream, "\n", .{});
 
         while (i < 16) : (i += 1) {
-            try writer.print("\x1b[48;5;{}m  \x1b[0m", .{i});
+            try std.fmt.format(out_stream, "\x1b[48;5;{}m  \x1b[0m", .{i});
         }
-        try writer.print("\n", .{});
     }
 
     /// this probably isn't what you want as it resets all theming
-    pub fn reset(writer: Writer) Writer.Error!void {
+    pub fn reset(out_stream: anytype) !void {
         var i: usize = 0;
         while (i < 16) : (i += 1) {
-            try writer.print("\x1b]104;{}\x1b\\", .{i});
+            try std.fmt.format(out_stream, "\x1b]104;{}\x1b\\", .{i});
         }
-
-        try pty.writer().print("\x1b]110\x1b\\", .{});
-        try pty.writer().print("\x1b]111\x1b\\", .{});
-        try pty.writer().print("\x1b]112\x1b\\", .{});
+        try std.fmt.format(out_stream, "\x1b]110\x1b\\", .{});
+        try std.fmt.format(out_stream, "\x1b]111\x1b\\", .{});
+        try std.fmt.format(out_stream, "\x1b]112\x1b\\", .{});
     }
 
-    pub fn preview(self: Palette, writer: Writer) Writer.Error!void {
+    pub fn preview(self: Palette, out_stream: anytype) !void {
         for (self.colors[0..8]) |c| {
-            try writer.print("\x1b[48;2;{}m  \x1b[0m", .{c});
+            try std.fmt.format(out_stream, "\x1b[48;2;{}m  \x1b[0m", .{c});
         }
-        try writer.print("\n", .{});
-
+        try std.fmt.format(out_stream, "\n", .{});
         for (self.colors[8..16]) |c| {
-            try writer.print("\x1b[48;2;{}m  \x1b[0m", .{c});
+            try std.fmt.format(out_stream, "\x1b[48;2;{}m  \x1b[0m", .{c});
         }
-        try writer.print("\n", .{});
     }
 
-    pub fn apply(self: Palette, writer: Writer) Writer.Error!void {
+    pub fn apply(self: Palette, out_stream: anytype) !void {
         for (self.colors[0..16]) |c, i| {
-            try writer.print("\x1b]4;{};{x}\x1b\\", .{ i, c });
+            try std.fmt.format(out_stream, "\x1b]4;{};{x}\x1b\\", .{ i, c });
         }
-        try writer.print("\x1b]10;{x}\x1b\\", .{self.fg});
-        try writer.print("\x1b]11;{x}\x1b\\", .{self.bg});
-        try writer.print("\x1b]12;{x}\x1b\\", .{self.cursor});
+        try std.fmt.format(out_stream, "\x1b]10;{x}\x1b\\", .{self.fg});
+        try std.fmt.format(out_stream, "\x1b]11;{x}\x1b\\", .{self.bg});
+        try std.fmt.format(out_stream, "\x1b]12;{x}\x1b\\", .{self.cursor});
     }
 
     pub fn parse(reader: Reader) !Palette {
@@ -109,5 +111,18 @@ pub const Palette = struct {
         }
 
         return result;
+    }
+
+    pub fn format(
+        self: Palette,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        out_stream: anytype,
+    ) !void {
+        if (comptime std.mem.eql(u8, fmt, "x")) {
+            try self.apply(out_stream);
+        } else {
+            try self.preview(out_stream);
+        }
     }
 };

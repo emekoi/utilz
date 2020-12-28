@@ -1,3 +1,9 @@
+//  Copyright (c) 2020 emekoi
+//
+//  This library is free software; you can redistribute it and/or modify it
+//  under the terms of the MIT license. See LICENSE for details.
+//
+
 const std = @import("std");
 const builtin = @import("builtin");
 
@@ -9,7 +15,7 @@ const ChildProcess = std.ChildProcess;
 
 pub const Package = struct {
     pub const Source = union(enum) {
-        const Error = fs.Dir.AccessError || mem.Allocator.Error || ChildProcess.SpawnError || error{Git};
+        pub const Error = fs.Dir.AccessError || mem.Allocator.Error || ChildProcess.SpawnError || error{Git};
 
         Git: [2][]const u8,
         Local: []const u8,
@@ -21,7 +27,7 @@ pub const Package = struct {
                     return file;
                 },
                 .Git => |repo| {
-                    // how am i supposed to free this?
+                    // the build system is backed by an arena allocator so leaking mem is fine
                     const out = try path.join(allocator, &[_][]const u8{ "deps", repo[1] });
 
                     if (fs.cwd().access(out, .{})) {} else |_| {
