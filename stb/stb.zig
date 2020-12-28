@@ -6,7 +6,6 @@
 
 const stb = @cImport({
     // @cInclude("stb/stb_image_resize.h");
-    // @cInclude("stb/stb_image_write.h");
     @cDefine("STBI_ASSERT(x)", "zig_assert(x)");
     @cDefine("STBI_MALLOC(x)", "zig_malloc(x)");
     @cDefine("STBI_REALLOC(x, n)", "zig_realloc(x, n)");
@@ -21,6 +20,7 @@ comptime {
     _ = @import("stb/zlibc.zig");
 }
 
+const debug = std.debug;
 const fs = std.fs;
 const mem = std.mem;
 const io = std.io;
@@ -55,8 +55,7 @@ pub const Image = struct {
                 nosuspend {
                     var stream = @ptrCast(?*S, @alignCast(@alignOf(S), user)).?.*;
                     const bytes_read = stream.read(data[0..@intCast(usize, size)]) catch |e| {
-                        // @panic("unable to read from stream of type {}: {}", .{ @typeName(S), e });
-                        @panic("unable to read from stream of type " ++ @typeName(S));
+                        debug.panic("unable to read from stream of type {}: {}", .{ @typeName(S), e });
                     };
                     return @intCast(c_int, bytes_read);
                 }
@@ -65,8 +64,7 @@ pub const Image = struct {
                 nosuspend {
                     var stream = @ptrCast(?*S, @alignCast(@alignOf(S), user)).?.*;
                     stream.seekBy(@as(isize, size)) catch |e| {
-                        // @panic("unable to seek stream of type {}: {}", .{ @typeName(S), e });
-                        @panic("unable to seek stream of type " ++ @typeName(S));
+                        debug.panic("unable to seek stream of type {}: {}", .{ @typeName(S), e });
                     };
                 }
             }
@@ -74,12 +72,10 @@ pub const Image = struct {
                 nosuspend {
                     var stream = @ptrCast(?*S, @alignCast(@alignOf(S), user)).?.*;
                     var pos = stream.getPos() catch |e| {
-                        // @panic("unable to get current position for stream of type {}: {}", .{ @typeName(S), e });
-                        @panic("unable to get current position for stream of type " ++ @typeName(S));
+                        debug.panic("unable to get current position for stream of type {}: {}", .{ @typeName(S), e });
                     };
                     var end = stream.getEndPos() catch |e| {
-                        // @panic("unable to get end position for stream of type {}: {}", .{ @typeName(S), e });
-                        @panic("unable to get end position for stream of type " ++ @typeName(S));
+                        debug.panic("unable to get end position for stream of type {}: {}", .{ @typeName(S), e });
                     };
                     return if (pos == end) 1 else 0;
                 }
