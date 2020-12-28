@@ -1,40 +1,40 @@
 # palette file spec
 palettes can passed to pal as `palette-profile` where no `-profile` means to use the default palette. 
 ```toml
-; the only required profile
+# the only required profile
 [default]
-foreground = 0xrrggbb
-background = 0xrrggbb
-cursor = 0xrrggbb
+foreground = '#rrggbb'
+background = '#rrggbb'
+cursor = '#rrggbb'
 colors = [
-  0xrrggbb, ; color 1
-  0xrrggbb, ; color 2
-  ...
-  0xrrggbb, ; color 16
+  '#rrggbb', # color 1
+  '#rrggbb', # color 2
+  # '#rrggbb'...
+  '#rrggbb', # color 16
 ]
 
 [light]
-foreground = ...
-background = ...
-cursor = ...
+foreground = '#rrggbb'
+background = '#rrggbb'
+cursor = '#rrggbb'
 colors = [
-  ...
+  # '#rrggbb'...
 ]
 
 [dark]
-foreground = ...
-background = ...
-cursor = ...
+foreground = '#rrggbb'
+background = '#rrggbb'
+cursor = '#rrggbb'
 colors = [
-  ...
+  # '#rrggbb'...
 ]
 
 [random-profile-name]
-foreground = ...
-background = ...
-cursor = ...
+foreground = '#rrggbb'
+background = '#rrggbb'
+cursor = '#rrggbb'
 colors = [
-  ...
+  # '#rrggbb'...
 ]
 ```
 

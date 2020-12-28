@@ -1,3 +1,29 @@
 <h1 align="center">pal</h1>
 
-a terminal palette switcher that can also generate palettes from images. it's themes are also compatible (TODO) with the rest of these utilities. 
+a terminal palette switcher that can also generate palettes from images. it's themes are also compatible (TODO) with the rest of these utilities.
+
+## note
+the format shown [here](PALETTE.md) is not the current format that `pal` uses. the current format looks like this:
+```
+background=073642
+foreground=fdf6e3
+cursor=dc322f
+color00=073642
+color01=dc322f
+color02=859900
+color03=b58900
+color04=268bd2
+color05=d33682
+color06=2aa198
+color07=eee8d5
+color08=6c7c80
+color09=dc322f
+color10=859900
+color11=b58900
+color12=268bd2
+color13=d33682
+color14=2aa198
+color15=eee8d5
+```
+
+place this under `$HOME/.local/share/pal/solarized` and use `pal -s solarized` to set the current palette. run `pal --help` or read the source to learn more.
