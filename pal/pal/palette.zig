@@ -10,7 +10,7 @@ const mem = std.mem;
 const Writer = std.fs.File.Writer;
 const Reader = std.fs.File.Reader;
 
-const Color = struct {
+pub const Color = struct {
     r: u8,
     g: u8,
     b: u8,
