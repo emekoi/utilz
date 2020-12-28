@@ -8,3 +8,4 @@ i started using linux a while back and ricing seemed kinda cool, so i wanted to 
 ## libraries
 - [build_sys](build/README.md)
 - [crummy](crummy/README.md)
+- [stb](stb/README.md)
