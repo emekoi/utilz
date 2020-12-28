@@ -29,15 +29,16 @@ pub const Package = struct {
                 .Git => |repo| {
                     // the build system is backed by an arena allocator so leaking mem is fine
                     const out = try path.join(allocator, &[_][]const u8{ "deps", repo[1] });
+                    fs.cwd().access(out, .{}) catch {
+                        if (fs.cwd().access(out, .{})) {} else |_| {
+                            var git = try ChildProcess.init(&[_][]const u8{ "git", "clone", repo[0], path.dirname(out).? }, allocator);
 
-                    if (fs.cwd().access(out, .{})) {} else |_| {
-                        var git = try ChildProcess.init(&[_][]const u8{ "git", "clone", repo[0], path.dirname(out).? }, allocator);
-
-                        switch (try git.spawnAndWait()) {
-                            ChildProcess.Term{ .Exited = 0 } => try fs.cwd().access(out, .{}),
-                            else => return error.Git,
+                            switch (try git.spawnAndWait()) {
+                                ChildProcess.Term{ .Exited = 0 } => try fs.cwd().access(out, .{}),
+                                else => return error.Git,
+                            }
                         }
-                    }
+                    };
                     return out;
                 },
             }
