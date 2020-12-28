@@ -69,21 +69,18 @@ pub fn main() !void {
     } else {
         var buf: [32]u8 = undefined;
 
-        const current_palette_name = blk: {
-            var current_file = palette_dir.openFile("current", .{}) catch |e| {
-                die("cannot get current palette: {}", .{e});
-            };
-            defer current_file.close();
-
-            break :blk buf[0 .. (try current_file.reader().read(&buf)) - 1];
-        };
-
         const current_palette: ?palette.Palette = blk: {
             if (args.flag("--current")) {
-                var p_file = try palette_dir.openFile(current_palette_name, .{});
-                defer p_file.close();
+                var current_file = palette_dir.openFile("current", .{}) catch |e| {
+                    die("cannot get current palette: {}", .{e});
+                };
+                defer current_file.close();
 
-                break :blk try palette.Palette.parse(p_file.reader());
+                const cp_name = buf[0..(try current_file.reader().read(&buf))];
+
+                var p_file = try palette_dir.openFile(cp_name, .{});
+                defer p_file.close();
+                break :blk try palette.Palette.parse(cp_name, p_file.reader());
             } else {
                 break :blk null;
             }
@@ -102,10 +99,11 @@ pub fn main() !void {
                     },
                 };
 
-                var p_file = try palette_dir.openFile(args.positionals()[idx], .{});
+                const name = args.positionals()[idx];
+                var p_file = try palette_dir.openFile(name, .{});
                 defer p_file.close();
 
-                break :blk try palette.Palette.parse(p_file.reader());
+                break :blk try palette.Palette.parse(name, p_file.reader());
             }
         };
 
@@ -122,21 +120,26 @@ pub fn main() !void {
             } else {
                 try io.getStdOut().writer().print("{x}", .{desired_palette});
             }
+            // TODO(emekoi): should this be a silent failure?
+            var current_file: fs.File = palette_dir.createFile("current", .{}) catch return;
+            defer current_file.close();
+
+            try current_file.writer().print("{}", .{desired_palette.name});
         } else if (args.flag("--palette")) {
             const stdout = io.getStdOut().writer();
 
             if (current_palette) |p| {
-                try stdout.print("current: {}\n{}\n\n", .{ current_palette_name, p });
+                try stdout.print("current: {}\n\n", .{p});
             }
 
             for (args.positionals()) |name| {
                 var p_file = try palette_dir.openFile(name, .{});
                 defer p_file.close();
 
-                const p = palette.Palette.parse(p_file.reader()) catch |_| {
+                const p = palette.Palette.parse(name, p_file.reader()) catch |_| {
                     die("invalid palette: {}", .{name});
                 };
-                try stdout.print("{}\n{}\n\n", .{ name, p });
+                try stdout.print("{}\n\n", .{p});
             }
         }
     }

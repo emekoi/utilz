@@ -42,7 +42,9 @@ pub const Palette = struct {
     bg: Color,
     cursor: Color,
     colors: [16]Color,
+    name: []const u8,
 
+    /// prefer manually loading and parsing the palette file to this function.
     pub fn showCurrent(out_stream: anytype) !void {
         var i: usize = 0;
 
@@ -56,7 +58,7 @@ pub const Palette = struct {
         }
     }
 
-    /// this probably isn't what you want as it resets all theming
+    /// this probably isn't what you want as it resets all theming.
     pub fn reset(out_stream: anytype) !void {
         var i: usize = 0;
         while (i < 16) : (i += 1) {
@@ -68,6 +70,7 @@ pub const Palette = struct {
     }
 
     pub fn preview(self: Palette, out_stream: anytype) !void {
+        try std.fmt.format(out_stream, "{}\n", .{self.name});
         for (self.colors[0..8]) |c| {
             try std.fmt.format(out_stream, "\x1b[48;2;{}m  \x1b[0m", .{c});
         }
@@ -86,10 +89,12 @@ pub const Palette = struct {
         try std.fmt.format(out_stream, "\x1b]12;{x}\x1b\\", .{self.cursor});
     }
 
-    pub fn parse(reader: Reader) !Palette {
+    pub fn parse(name: []const u8, reader: Reader) !Palette {
         var buf: [32]u8 = undefined;
         var result: Palette = undefined;
         var bytes: [3]u8 = undefined;
+
+        result.name = name;
 
         while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |line| {
             var toks = mem.split(line, "=");
