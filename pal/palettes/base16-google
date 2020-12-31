@@ -1,0 +1,45 @@
+[default]
+foreground = "#c5c8c6"
+background = "#1d1f21"
+cursor = "#c5c8c6"
+colors = [
+  "#1d1f21",
+  "#cc342b",
+  "#198844",
+  "#fba922",
+  "#3971ed",
+  "#a36ac7",
+  "#3971ed",
+  "#c5c8c6",
+  "#969896",
+  "#cc342b",
+  "#198844",
+  "#fba922",
+  "#3971ed",
+  "#a36ac7",
+  "#3971ed",
+  "#ffffff",
+]
+
+[light]
+foreground = "#373b41"
+background = "#ffffff"
+cursor = "#373b41"
+colors = [
+  "#ffffff",
+  "#cc342b",
+  "#198844",
+  "#fba922",
+  "#3971ed",
+  "#a36ac7",
+  "#3971ed",
+  "#373b41",
+  "#b4b7b4",
+  "#cc342b",
+  "#198844",
+  "#fba922",
+  "#3971ed",
+  "#a36ac7",
+  "#3971ed",
+  "#1d1f21",
+]

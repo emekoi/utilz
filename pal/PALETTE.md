@@ -3,7 +3,7 @@ palettes can passed to pal as `palette-profile` where no `-profile` means to use
 ```toml
 # the only required profile
 [default]
-foreground = '#rrggbb'
+foreground = '#rrggbb' # or "#rrggbb"
 background = '#rrggbb'
 cursor = '#rrggbb'
 colors = [
