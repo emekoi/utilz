@@ -13,6 +13,7 @@ const Builder = std.build.Builder;
 const packages = [_]sys.Package{
     .{
         .name = "pal",
+        .kind = .Binary,
         .source = .{ .Local = "pal/pal.zig" },
         .dependencies = &[_]sys.Package{
             .{
@@ -27,7 +28,16 @@ const packages = [_]sys.Package{
                 .name = "stb",
                 .source = .{ .Local = "stb/stb.zig" },
             },
+            .{
+                .name = "mecha",
+                .source = .{ .Git = .{ "https://github.com/Hejsil/mecha.git", "mecha/mecha.zig" } },
+            },
         },
+    },
+    .{
+        .name = "stb",
+        .kind = .Library,
+        .source = .{ .Local = "stb/stb.zig" },
     },
 };
 

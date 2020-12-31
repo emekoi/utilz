@@ -1,5 +1,5 @@
 # palette file spec
-palettes can passed to pal as `palette-profile` where no `-profile` means to use the `default` profile. 
+palettes can passed to pal as `palette-profile` where no `-profile` means to use the `default` profile. they are written in a small subset of TOML.
 ```toml
 # the only required profile
 [default]

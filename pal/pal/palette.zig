@@ -5,6 +5,8 @@
 //
 
 const std = @import("std");
+const parser = @import("parser.zig");
+
 const mem = std.mem;
 
 const Writer = std.fs.File.Writer;
@@ -38,11 +40,11 @@ pub const Color = struct {
 };
 
 pub const Palette = struct {
-    fg: Color,
-    bg: Color,
+    name: []const u8,
+    foreground: Color,
+    background: Color,
     cursor: Color,
     colors: [16]Color,
-    name: []const u8,
 
     /// prefer manually loading and parsing the palette file to this function.
     pub fn showCurrent(out_stream: anytype) !void {
@@ -84,38 +86,9 @@ pub const Palette = struct {
         for (self.colors[0..16]) |c, i| {
             try std.fmt.format(out_stream, "\x1b]4;{};{x}\x1b\\", .{ i, c });
         }
-        try std.fmt.format(out_stream, "\x1b]10;{x}\x1b\\", .{self.fg});
-        try std.fmt.format(out_stream, "\x1b]11;{x}\x1b\\", .{self.bg});
+        try std.fmt.format(out_stream, "\x1b]10;{x}\x1b\\", .{self.foreground});
+        try std.fmt.format(out_stream, "\x1b]11;{x}\x1b\\", .{self.background});
         try std.fmt.format(out_stream, "\x1b]12;{x}\x1b\\", .{self.cursor});
-    }
-
-    pub fn parse(name: []const u8, reader: Reader) !Palette {
-        var buf: [32]u8 = undefined;
-        var result: Palette = undefined;
-        var bytes: [3]u8 = undefined;
-
-        result.name = name;
-
-        while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-            var toks = mem.split(line, "=");
-            const color = toks.next() orelse return error.InvalidPalette;
-            try std.fmt.hexToBytes(&bytes, toks.next() orelse return error.InvalidPalette);
-
-            if (mem.eql(u8, color, "background")) {
-                result.bg = Color.fromSlice(&bytes);
-            } else if (mem.eql(u8, color, "foreground")) {
-                result.fg = Color.fromSlice(&bytes);
-            } else if (mem.eql(u8, color, "cursor")) {
-                result.cursor = Color.fromSlice(&bytes);
-            } else if (mem.startsWith(u8, color, "color")) {
-                const idx = try std.fmt.parseUnsigned(usize, mem.trimLeft(u8, color, "color"), 10);
-                if (idx < result.colors.len) {
-                    result.colors[idx] = Color.fromSlice(&bytes);
-                }
-            }
-        }
-
-        return result;
     }
 
     pub fn format(
@@ -129,5 +102,32 @@ pub const Palette = struct {
         } else {
             try self.preview(out_stream);
         }
+    }
+};
+
+pub const PaleteSet = struct {
+    const Map = std.AutoArrayHashMap([]const u8, Palette);
+    palettes: Map,
+
+    pub fn parse(allocator: *mem.Allocator, name: []const u8, reader: Reader) !PaleteSet {
+        var buf = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
+        var rem = buf;
+
+        var result = PaleteSet{ .palettes = Map.init(allocator) };
+
+        while (parser.parsePalette(rem)) |r| {
+            const entry_name = r.value.name;
+            r.value.name = std.fmt.allocPrint(allocator, "{}-{}", .{ name, r.value.name });
+            result.palettes.put(entry_name, r.value);
+            rem = r.rest;
+        } else {
+            if (rem != "") {
+                return error.InvalidPalette;
+            }
+        }
+    }
+
+    pub fn deinit(self: *PaleteSet) void {
+        self.palettes.deinit();
     }
 };

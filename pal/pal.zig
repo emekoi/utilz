@@ -144,3 +144,8 @@ pub fn main() !void {
         }
     }
 }
+
+test "pal" {
+    _ = @import("pal/palette.zig");
+    _ = @import("pal/parser.zig");
+}
