@@ -158,16 +158,22 @@ pub fn main() !u8 {
         const stdout = io.getStdOut().writer();
 
         if (current_palette) |p| {
-            try stdout.print("current: {}\n\n", .{p});
+            try stdout.print("*{}\n", .{p});
+            if (args.positionals().len > 0) {
+                try stdout.print("\n", .{});
+            }
         }
 
-        for (args.positionals()) |name| {
+        for (args.positionals()) |name, i| {
             var p = getPalette(&palette_set, name, palette_dir) catch {
                 try stdout.print("invalid palette: {}\n\n", .{name});
                 continue;
             };
 
-            try stdout.print("{}\n\n", .{p});
+            try stdout.print("{}\n", .{p});
+            if (i != args.positionals().len - 1) {
+                try stdout.print("\n", .{});
+            }
         }
     } else {
         try stderr.print("pal: {} [options] [palettes]\n", .{args.exe_arg});
