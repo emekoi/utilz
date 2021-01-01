@@ -33,6 +33,7 @@ const packages = [_]sys.Package{
                 .source = .{ .Git = .{ "https://github.com/Hejsil/mecha.git", "mecha/mecha.zig" } },
             },
         },
+        .install_step = @import("pal/build.zig").install(@import("deps/known-folders/known-folders.zig")),
     },
     .{
         .name = "stb",

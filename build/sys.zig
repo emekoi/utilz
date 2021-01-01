@@ -53,6 +53,7 @@ pub const Package = struct {
     source: Source,
     dependencies: ?[]const Package = null,
     kind: Type = .Library,
+    install_step: ?fn (*std.build.Builder) anyerror!void = null,
 
     pub fn ensureDeps(self: Package, allocator: *mem.Allocator) Source.Error!void {
         _ = try self.source.getPath(allocator, self.name);
@@ -114,6 +115,10 @@ pub const Package = struct {
                 const test_step = b.step(test_name, b.fmt("run tests for {}", .{self.name}));
                 test_step.dependOn(&main_tests.step);
             },
+        }
+
+        if (self.install_step) |step| {
+            try step(b);
         }
     }
 };
