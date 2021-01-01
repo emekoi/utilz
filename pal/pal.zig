@@ -9,6 +9,7 @@ const known = @import("known-folders");
 const clap = @import("clap");
 
 const palette = @import("pal/palette.zig");
+const replaceWriter = @import("pal/replace_writer.zig").replaceWriter;
 
 const fmt = std.fmt;
 const fs = std.fs;
@@ -28,70 +29,99 @@ const cli_params = comptime blk: {
     };
 };
 
-fn die(comptime fmt_str: []const u8, args: anytype) noreturn {
+fn die(comptime fmt_str: []const u8, args: anytype) u8 {
     std.debug.print(fmt_str ++ "\n", args);
-    std.os.exit(1);
+    return 1;
 }
 
-pub fn main() !void {
+fn paletteLocal() !fs.Dir {
+    return try fs.cwd().makeOpenPath("pal", .{});
+}
+
+fn getPalette(set: *palette.PaleteSet, full_name: []const u8, dir: fs.Dir) !palette.Palette {
+    var name_iter = std.mem.split(full_name, "-");
+    const base = name_iter.next().?;
+
+    if (set.get(full_name)) |p| {
+        return p;
+    }
+
+    var p_file = try dir.openFile(base, .{});
+    defer p_file.close();
+
+    try set.add(base, p_file.reader());
+    return set.get(full_name) orelse error.InvalidPalette;
+}
+
+pub fn main() !u8 {
     var gpa = heap.GeneralPurposeAllocator(.{}){
         .backing_allocator = heap.page_allocator,
     };
     var gpa_alloc = &gpa.allocator;
     defer _ = gpa.deinit();
 
-    const palette_dir = blk: {
-        const cwd = fs.cwd();
+    const stderr = replaceWriter(io.getStdErr().writer(), "\t", "  ").writer();
+
+    var palette_set = palette.PaleteSet.init(gpa_alloc);
+    defer palette_set.deinit();
+
+    const pal_dir = blk: {
         if (try known.open(gpa_alloc, .data, .{})) |dir| {
-            break :blk dir.makeOpenPath("pal", .{ .iterate = true }) catch {
-                break :blk try cwd.makeOpenPath("palettes", .{ .iterate = true });
-            };
+            break :blk dir.makeOpenPath("pal", .{}) catch try paletteLocal();
         } else {
-            break :blk try cwd.makeOpenPath("palettes", .{ .iterate = true });
+            break :blk try paletteLocal();
         }
     };
 
+    const palette_dir = try pal_dir.makeOpenPath("palettes", .{});
+
     var diag: clap.Diagnostic = undefined;
     var args = clap.parse(clap.Help, &cli_params, gpa_alloc, &diag) catch |err| {
-        diag.report(io.getStdErr().writer(), err) catch {};
+        diag.report(stderr, err) catch {};
 
-        const w = io.getStdErr().writer();
-        try w.print("\n", .{});
-        try clap.help(w, &cli_params);
-        return;
+        try stderr.print("\n", .{});
+        try clap.help(stderr, &cli_params);
+        return 0;
     };
     defer args.deinit();
 
     if (args.flag("--help")) {
-        const w = io.getStdErr().writer();
-        try w.print("pal: {}\n", .{args.exe_arg});
-        try clap.help(w, &cli_params);
-    } else {
-        var buf: [32]u8 = undefined;
+        try stderr.print("pal: {} [options] [palettes]\n", .{args.exe_arg});
+        try clap.help(stderr, &cli_params);
+        return 0;
+    }
 
-        const current_palette: ?palette.Palette = blk: {
-            if (args.flag("--current")) {
-                var current_file = palette_dir.openFile("current", .{}) catch |e| {
-                    die("cannot get current palette: {}", .{e});
-                };
-                defer current_file.close();
+    var buf: [32]u8 = undefined;
 
-                const cp_name = buf[0..(try current_file.reader().read(&buf))];
+    const current_palette: ?palette.Palette = blk: {
+        if (args.flag("--current")) {
+            var current_file = pal_dir.openFile("current", .{}) catch |e| {
+                return die("cannot get current palette: {}", .{e});
+            };
+            defer current_file.close();
 
-                var p_file = try palette_dir.openFile(cp_name, .{});
-                defer p_file.close();
-                break :blk try palette.Palette.parse(cp_name, p_file.reader());
-            } else {
-                break :blk null;
-            }
-        };
+            const cp_name = std.mem.trim(u8, buf[0..(try current_file.reader().read(&buf))], " \n\r\t");
 
+            break :blk getPalette(&palette_set, cp_name, palette_dir) catch |e| {
+                return die("invalid palette \"{}\" set as current palette: {}", .{ cp_name, e });
+            };
+        } else {
+            break :blk null;
+        }
+    };
+
+    if (args.flag("--set")) {
         const desired_palette = blk: {
             if (current_palette) |p| {
                 break :blk p;
             } else {
                 const idx = switch (args.positionals().len) {
-                    0 => die("no palette supplied", .{}),
+                    0 => {
+                        try stderr.print("no palette supplied\n\n", .{});
+                        try stderr.print("pal: {} [options] [palettes]\n", .{args.exe_arg});
+                        try clap.help(stderr, &cli_params);
+                        std.os.exit(1);
+                    },
                     1 => 0,
                     else => i: {
                         var r = &rand.Xoroshiro128.init(@intCast(u64, std.time.milliTimestamp())).random;
@@ -99,50 +129,52 @@ pub fn main() !void {
                     },
                 };
 
-                const name = args.positionals()[idx];
-                var p_file = try palette_dir.openFile(name, .{});
-                defer p_file.close();
-
-                break :blk try palette.Palette.parse(name, p_file.reader());
+                break :blk getPalette(&palette_set, args.positionals()[idx], palette_dir) catch {
+                    return die("invalid palette: {}", .{args.positionals()[idx]});
+                };
             }
         };
 
-        if (args.flag("--set")) {
-            if (args.flag("--broadcast")) {
-                const pts = (try std.fs.openDirAbsolute("/dev/pts/", .{ .iterate = true }));
-                var pts_iter = pts.iterate();
+        if (args.flag("--broadcast")) {
+            const pts = (try std.fs.openDirAbsolute("/dev/pts/", .{ .iterate = true }));
+            var pts_iter = pts.iterate();
 
-                while (try pts_iter.next()) |p| {
-                    _ = fmt.parseInt(usize, p.name, 10) catch continue;
-                    var pty = try pts.openFile(p.name, .{ .read = true, .write = true });
-                    try pty.writer().print("{x}", .{desired_palette});
-                }
-            } else {
-                try io.getStdOut().writer().print("{x}", .{desired_palette});
+            while (try pts_iter.next()) |p| {
+                _ = fmt.parseInt(usize, p.name, 10) catch continue;
+                var pty = try pts.openFile(p.name, .{ .read = true, .write = true });
+                try pty.writer().print("{x}", .{desired_palette});
             }
-            // TODO(emekoi): should this be a silent failure?
-            var current_file: fs.File = palette_dir.createFile("current", .{}) catch return;
-            defer current_file.close();
-
-            try current_file.writer().print("{}", .{desired_palette.name});
-        } else if (args.flag("--palette")) {
-            const stdout = io.getStdOut().writer();
-
-            if (current_palette) |p| {
-                try stdout.print("current: {}\n\n", .{p});
-            }
-
-            for (args.positionals()) |name| {
-                var p_file = try palette_dir.openFile(name, .{});
-                defer p_file.close();
-
-                const p = palette.Palette.parse(name, p_file.reader()) catch |_| {
-                    die("invalid palette: {}", .{name});
-                };
-                try stdout.print("{}\n\n", .{p});
-            }
+        } else {
+            try io.getStdOut().writer().print("{x}", .{desired_palette});
         }
+
+        var current_file: fs.File = pal_dir.createFile("current", .{}) catch |e| {
+            return die("cannot access current palette file: {}", .{e});
+        };
+        defer current_file.close();
+
+        try current_file.writer().print("{}", .{desired_palette.name});
+    } else if (args.flag("--palette")) {
+        const stdout = io.getStdOut().writer();
+
+        if (current_palette) |p| {
+            try stdout.print("current: {}\n\n", .{p});
+        }
+
+        for (args.positionals()) |name| {
+            var p = getPalette(&palette_set, name, palette_dir) catch {
+                try stdout.print("invalid palette: {}\n\n", .{name});
+                continue;
+            };
+
+            try stdout.print("{}\n\n", .{p});
+        }
+    } else {
+        try stderr.print("pal: {} [options] [palettes]\n", .{args.exe_arg});
+        try clap.help(stderr, &cli_params);
     }
+
+    return 0;
 }
 
 test "pal" {

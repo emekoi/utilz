@@ -219,7 +219,7 @@ pub fn parsePalette(str: []const u8) ?Result(Palette) {
     };
 
     const pairP = comptime map(Pair, toStruct(Pair), combine(.{ key, value }));
-    const protoP = comptime map(Prototype, toStruct(Prototype), combine(.{ section, manyN(4, pairP) }));
+    const protoP = comptime map(Prototype, toStruct(Prototype), combine(.{ discard(ws), section, manyN(4, pairP), discard(ws) }));
 
     if (protoP(str)) |proto| {
         var result: Palette = undefined;
@@ -271,12 +271,13 @@ const solarized = blk: {
 };
 
 const solarized_palette_src =
+    \\
     \\[default]
     \\background='#073642'
     \\foreground='#fdf6e3'
     \\cursor='#dc322f'
     \\colors = [
-    \\'#073642',
+    \\  '#073642',
     \\'#dc322f',
     \\'#859900',
     \\'#b58900',
@@ -293,6 +294,7 @@ const solarized_palette_src =
     \\'#2aa198',
     \\'#eee8d5',
     \\]
+    \\
 ;
 
 test "pal.parser.parsePalette" {

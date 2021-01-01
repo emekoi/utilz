@@ -2,6 +2,12 @@
 
 a terminal palette switcher that can also generate palettes from images (TODO). the themes it generates are also compatible with the rest of these utilities.
 
+## install
+```sh
+zig build --prefix / install-palettes
+zig build --prefix $HOME/.local pal
+```
+
 ## help
 - more info about the palette file format can be found [here](PALETTE.md).
 - run `pal --help` or read the source for help using `pal`.

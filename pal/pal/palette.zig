@@ -99,35 +99,104 @@ pub const Palette = struct {
     ) !void {
         if (comptime std.mem.eql(u8, fmt, "x")) {
             try self.apply(out_stream);
+        } else if (comptime std.mem.eql(u8, fmt, "s")) {
+            try std.fmt.format(out_stream, "[{}]\n", .{self.name});
+            try std.fmt.format(out_stream, "foreground = \"{x}\"\n", .{self.foreground});
+            try std.fmt.format(out_stream, "background = \"{x}\"\n", .{self.background});
+            try std.fmt.format(out_stream, "cursor = \"{x}\"\n", .{self.cursor});
+            try std.fmt.format(out_stream, "colors = [\n", .{});
+            for (self.colors[0..16]) |c, i| {
+                try std.fmt.format(out_stream, "  \"{x}\",\n", .{c});
+            }
+            try std.fmt.format(out_stream, "]", .{});
         } else {
             try self.preview(out_stream);
         }
     }
+
+    pub fn parseOld(name: []const u8, reader: Reader) !Palette {
+        var buf: [32]u8 = undefined;
+        var result: Palette = undefined;
+        var bytes: [3]u8 = undefined;
+
+        result.name = name;
+
+        while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+            var toks = mem.split(line, "=");
+            const color = toks.next() orelse return error.InvalidPalette;
+            try std.fmt.hexToBytes(&bytes, toks.next() orelse return error.InvalidPalette);
+
+            if (mem.eql(u8, color, "background")) {
+                result.background = Color.fromSlice(&bytes);
+            } else if (mem.eql(u8, color, "foreground")) {
+                result.foreground = Color.fromSlice(&bytes);
+            } else if (mem.eql(u8, color, "cursor")) {
+                result.cursor = Color.fromSlice(&bytes);
+            } else if (mem.startsWith(u8, color, "color")) {
+                const idx = try std.fmt.parseUnsigned(usize, mem.trimLeft(u8, color, "color"), 10);
+                if (idx < result.colors.len) {
+                    result.colors[idx] = Color.fromSlice(&bytes);
+                }
+            }
+        }
+
+        return result;
+    }
 };
 
 pub const PaleteSet = struct {
-    const Map = std.AutoArrayHashMap([]const u8, Palette);
+    const Map = std.StringHashMap(Palette);
+    const List = std.ArrayList([]const u8);
+
+    allocator: *mem.Allocator,
+    profiles: List,
     palettes: Map,
 
-    pub fn parse(allocator: *mem.Allocator, name: []const u8, reader: Reader) !PaleteSet {
-        var buf = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
-        var rem = buf;
+    pub fn init(allocator: *mem.Allocator) PaleteSet {
+        return PaleteSet{
+            .allocator = allocator,
+            .palettes = Map.init(allocator),
+            .profiles = List.init(allocator),
+        };
+    }
 
-        var result = PaleteSet{ .palettes = Map.init(allocator) };
+    pub fn add(self: *PaleteSet, name: []const u8, reader: Reader) !void {
+        var buf = try reader.readAllAlloc(self.allocator, std.math.maxInt(usize));
+        defer self.allocator.free(buf);
 
-        while (parser.parsePalette(rem)) |r| {
-            const entry_name = r.value.name;
-            r.value.name = std.fmt.allocPrint(allocator, "{}-{}", .{ name, r.value.name });
-            result.palettes.put(entry_name, r.value);
+        var rem = @as([]const u8, buf);
+        while (parser.parsePalette(rem)) |*r| {
+            var new_name = try self.profiles.addOne();
+            new_name.* = try std.fmt.allocPrint(self.allocator, "{}-{}", .{ name, r.value.name });
+            if (std.mem.eql(u8, r.value.name, "default")) {
+                r.value.name = new_name.*[0..name.len];
+            } else {
+                r.value.name = new_name.*;
+            }
+            try self.palettes.put(new_name.*, r.value);
             rem = r.rest;
         } else {
-            if (rem != "") {
+            if (rem.len != 0) {
                 return error.InvalidPalette;
             }
         }
     }
 
+    pub fn get(self: *PaleteSet, name: []const u8) ?Palette {
+        if (self.palettes.get(name)) |p| {
+            return p;
+        } else {
+            const full_name = std.fmt.allocPrint(self.allocator, "{}-default", .{name}) catch return null;
+            defer self.allocator.free(full_name);
+            return self.palettes.get(full_name);
+        }
+    }
+
     pub fn deinit(self: *PaleteSet) void {
         self.palettes.deinit();
+        for (self.profiles.items) |n| {
+            self.allocator.free(n);
+        }
+        self.profiles.deinit();
     }
 };
