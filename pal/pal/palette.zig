@@ -114,7 +114,8 @@ pub const Palette = struct {
         }
     }
 
-    pub fn parseOld(name: []const u8, reader: Reader) !Palette {
+    // deprecated: use a PaletteSet
+    pub fn parseOldFormat(name: []const u8, reader: Reader) !Palette {
         var buf: [32]u8 = undefined;
         var result: Palette = undefined;
         var bytes: [3]u8 = undefined;
@@ -167,7 +168,7 @@ pub const PaleteSet = struct {
         var rem = @as([]const u8, buf);
         while (parser.parsePalette(rem)) |*r| {
             var new_name = try self.profiles.addOne();
-            new_name.* = try std.fmt.allocPrint(self.allocator, "{}-{}", .{ name, r.value.name });
+            new_name.* = try std.fmt.allocPrint(self.allocator, "{}:{}", .{ name, r.value.name });
             if (std.mem.eql(u8, r.value.name, "default")) {
                 r.value.name = new_name.*[0..name.len];
             } else {
@@ -186,7 +187,7 @@ pub const PaleteSet = struct {
         if (self.palettes.get(name)) |p| {
             return p;
         } else {
-            const full_name = std.fmt.allocPrint(self.allocator, "{}-default", .{name}) catch return null;
+            const full_name = std.fmt.allocPrint(self.allocator, "{}:default", .{name}) catch return null;
             defer self.allocator.free(full_name);
             return self.palettes.get(full_name);
         }

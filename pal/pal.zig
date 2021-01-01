@@ -38,11 +38,11 @@ fn paletteLocal() !fs.Dir {
     return try fs.cwd().makeOpenPath("pal", .{});
 }
 
-fn getPalette(set: *palette.PaleteSet, full_name: []const u8, dir: fs.Dir) !palette.Palette {
-    var name_iter = std.mem.split(full_name, "-");
-    const base = name_iter.next().?;
+fn getPalette(set: *palette.PaleteSet, name: []const u8, dir: fs.Dir) !palette.Palette {
+    const idx = std.mem.indexOf(u8, name, ":") orelse name.len;
+    const base = name[0..idx];
 
-    if (set.get(full_name)) |p| {
+    if (set.get(name)) |p| {
         return p;
     }
 
@@ -50,7 +50,7 @@ fn getPalette(set: *palette.PaleteSet, full_name: []const u8, dir: fs.Dir) !pale
     defer p_file.close();
 
     try set.add(base, p_file.reader());
-    return set.get(full_name) orelse error.InvalidPalette;
+    return set.get(name) orelse error.InvalidPalette;
 }
 
 pub fn main() !u8 {
