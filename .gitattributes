@@ -1,3 +1,5 @@
 *.zig text eol=lf
 
 deps/* linguist-vendored
+stb/stb/*.c linguist-vendored
+stb/stb/*.h linguist-vendored
