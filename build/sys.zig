@@ -1,12 +1,12 @@
-//  Copyright (c) 2020 emekoi
+//  Copyright (c) 2020-2021 emekoi
 //
 //  This library is free software; you can redistribute it and/or modify it
 //  under the terms of the MIT license. See LICENSE for details.
 //
 
 const std = @import("std");
-const builtin = @import("builtin");
-
+// const builtin = @import("builtin");
+const builtin = std.builtin;
 const fs = std.fs;
 const mem = std.mem;
 const path = fs.path;
@@ -21,6 +21,7 @@ pub const Package = struct {
         Local: []const u8,
 
         pub fn getPath(self: Source, allocator: *mem.Allocator, name: []const u8) Error![]const u8 {
+            _ = name;
             switch (self) {
                 .Local => |file| {
                     try fs.cwd().access(file, .{});
@@ -45,9 +46,7 @@ pub const Package = struct {
         }
     };
 
-    pub const Type = enum {
-        Binary, Library
-    };
+    pub const Type = enum { Binary, Library };
 
     name: []const u8,
     source: Source,
@@ -90,15 +89,15 @@ pub const Package = struct {
                     run_cmd.addArgs(args);
                 }
 
-                const run_step = b.step(self.name, b.fmt("run {}", .{self.name}));
+                const run_step = b.step(self.name, b.fmt("run {s}", .{self.name}));
                 run_step.dependOn(&run_cmd.step);
 
                 var main_tests = b.addTest(src_path);
                 try self.addPackages(b.allocator, main_tests);
                 main_tests.setBuildMode(mode);
 
-                const test_name = b.fmt("test-{}", .{self.name});
-                const test_step = b.step(test_name, b.fmt("run tests for {}", .{self.name}));
+                const test_name = b.fmt("test-{s}", .{self.name});
+                const test_step = b.step(test_name, b.fmt("run tests for {s}", .{self.name}));
                 test_step.dependOn(&main_tests.step);
             },
             .Library => {
@@ -111,8 +110,8 @@ pub const Package = struct {
                 try self.addPackages(b.allocator, main_tests);
                 main_tests.setBuildMode(mode);
 
-                const test_name = b.fmt("test-{}", .{self.name});
-                const test_step = b.step(test_name, b.fmt("run tests for {}", .{self.name}));
+                const test_name = b.fmt("test-{s}", .{self.name});
+                const test_step = b.step(test_name, b.fmt("run tests for {s}", .{self.name}));
                 test_step.dependOn(&main_tests.step);
             },
         }

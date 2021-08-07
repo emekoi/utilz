@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 emekoi
+//  Copyright (c) 2020-2021 emekoi
 //
 //  This library is free software; you can redistribute it and/or modify it
 //  under the terms of the MIT license. See LICENSE for details.
@@ -14,9 +14,11 @@ const mem = std.mem;
 
 usingnamespace @import("mecha");
 
-fn testParser(comptime parser: anytype, comptime examples: anytype) void {
+fn testParser(comptime parser: anytype, comptime examples: anytype) !void {
+    var fail = std.testing.FailingAllocator.init(std.testing.allocator, 0);
+
     inline for (examples) |ex| {
-        expectResult(ParserResult(@TypeOf(parser)), .{ .value = ex[1], .rest = ex[2] }, parser(ex[0]));
+        try expectResult(ParserResult(@TypeOf(parser)), .{ .value = ex[1], .rest = ex[2] }, parser(&fail.allocator, ex[0]));
     }
 }
 
@@ -30,9 +32,9 @@ fn toByte2(v: [2]u8) u8 {
 
 const hex = convert(u8, toInt(u8, 16), asStr(ascii.digit(16)));
 const hex1 = map(u8, toByte, hex);
-const hex2 = map(u8, toByte2, manyN(2, hex));
-const rgb1 = map(Color, toStruct(Color), manyN(3, hex1));
-const rgb2 = map(Color, toStruct(Color), manyN(3, hex2));
+const hex2 = map(u8, toByte2, manyN(hex, 2, .{}));
+const rgb1 = map(Color, toStruct(Color), manyN(hex1, 3, .{}));
+const rgb2 = map(Color, toStruct(Color), manyN(hex2, 3, .{}));
 pub const raw_color = combine(.{
     ascii.char('#'),
     oneOf(.{
@@ -40,6 +42,13 @@ pub const raw_color = combine(.{
         rgb1,
     }),
 });
+
+const ws = discard(many(oneOf(.{
+    utf8.char(' '),
+    utf8.char('\n'),
+    utf8.char('\r'),
+    utf8.char('\t'),
+}), .{ .collect = false }));
 
 pub const color = combine(.{
     oneOf(.{ utf8.char('"'), utf8.char('\'') }),
@@ -50,7 +59,7 @@ pub const color = combine(.{
 
 test "pal.parser.color" {
     const c = Color{ .r = 0xaa, .g = 0xbb, .b = 0xcc };
-    testParser(color, .{
+    try testParser(color, .{
         .{ "'#aabbcc'", c, "" },
         .{ "\"#abc\"", c, "" },
     });
@@ -60,7 +69,7 @@ const identifier = many(oneOf(.{
     discard(utf8.range('a', 'z')),
     discard(utf8.range('A', 'Z')),
     utf8.char('-'),
-}));
+}), .{ .collect = false });
 
 pub const section = combine(.{
     ascii.char('['),
@@ -70,18 +79,11 @@ pub const section = combine(.{
 });
 
 test "pal.parser.section" {
-    testParser(section, .{
+    try testParser(section, .{
         .{ "[default]", "default", "" },
         .{ "[some-section-name] \n", "some-section-name", "" },
     });
 }
-
-const ws = discard(many(oneOf(.{
-    utf8.char(' '),
-    utf8.char('\n'),
-    utf8.char('\r'),
-    utf8.char('\t'),
-})));
 
 pub const key = combine(.{
     identifier,
@@ -91,7 +93,7 @@ pub const key = combine(.{
 });
 
 test "pal.parser.key" {
-    testParser(key, .{
+    try testParser(key, .{
         .{ "key = value", "key", "value" },
         .{ "key \t\n\r =               value", "key", "value" },
     });
@@ -105,28 +107,28 @@ pub fn arrayN(
     return struct {
         const Array = [n]ParserResult(@TypeOf(parser));
         const Res = Result(Array);
-        const List = comptime combine(.{
+        const List = combine(.{
             ascii.char('['),
             ws,
             parser,
-            manyN(n - 1, combine(.{
+            manyN(combine(.{
                 combine(.{ delim, ws }),
                 parser,
-            })),
+            }), n - 1, .{}),
             opt(combine(.{ delim, ws })),
             ascii.char(']'),
         });
 
-        fn func(str: []const u8) ?Res {
-            if (List(str)) |r| {
+        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+            if (List(allocator, str)) |r| {
                 var res: Array = undefined;
                 for (res[1..]) |*arr, i| {
                     arr.* = r.value[1][i];
                 }
                 res[0] = r.value[0];
-                return Res.init(res, r.rest);
-            } else {
-                return null;
+                return Res{ .value = res, .rest = r.rest };
+            } else |err| {
+                return err;
             }
         }
     }.func;
@@ -136,7 +138,7 @@ test "pal.parser.arrayN" {
     const array = comptime arrayN(3, color, ascii.char(','));
 
     const c = Color{ .r = 0xaa, .g = 0xbb, .b = 0xcc };
-    testParser(array, .{
+    try testParser(array, .{
         .{ "['#aabbcc' ,  \t'#aabbcc','#aabbcc'\r]A", [3]Color{ c, c, c }, "A" },
         .{
             \\[
@@ -151,20 +153,21 @@ test "pal.parser.arrayN" {
     });
 }
 
-pub fn comment(s: []const u8) ?Result(void) {
+pub fn comment(allocator: *mem.Allocator, s: []const u8) Error!Result(void) {
+    _ = allocator;
     if (!mem.startsWith(u8, s, "#")) {
-        return null;
+        return Error.ParserFailed;
     } else {
         if (mem.indexOf(u8, s, "\n")) |idx| {
-            return Result(void).init({}, s[idx..]);
+            return Result(void){ .value = {}, .rest = s[idx..] };
         } else {
-            return Result(void).init({}, "");
+            return Result(void){ .value = {}, .rest = "" };
         }
     }
 }
 
 test "pal.parser.comment" {
-    testParser(comment, .{
+    try testParser(comment, .{
         .{ "# hello this is a comment", {}, "" },
         .{ "# hello this is a comment\n", {}, "\n" },
     });
@@ -175,40 +178,42 @@ pub const Value = union(enum) {
     Array: [16]Color,
 };
 
-pub fn value(str: []const u8) ?Result(Value) {
+pub fn value(allocator: *mem.Allocator, str: []const u8) Error!Result(Value) {
     const R = Result(Value);
     const A = comptime arrayN(16, color, ascii.char(','));
-    if (color(str)) |r| {
-        return R.init(Value{ .Single = r.value }, r.rest);
-    } else if (A(str)) |r| {
-        return R.init(Value{ .Array = r.value }, r.rest);
-    } else return null;
+    if (color(allocator, str)) |r| {
+        return R{ .value = Value{ .Single = r.value }, .rest = r.rest };
+    } else |_| {
+        if (A(allocator, str)) |r| {
+            return R{ .value = Value{ .Array = r.value }, .rest = r.rest };
+        } else |err2| return err2;
+    }
 }
 
 test "pal.parser.value" {
-    testParser(value, .{
+    try testParser(value, .{
         .{ "'#073642'", Value{ .Single = Color{ .r = 0x07, .g = 0x36, .b = 0x42 } }, "" },
         .{ "'#fdf6e3'", Value{ .Single = Color{ .r = 0xfd, .g = 0xf6, .b = 0xe3 } }, "" },
         .{ "'#dc322f'", Value{ .Single = Color{ .r = 0xdc, .g = 0x32, .b = 0x2f } }, "" },
     });
 }
 
-pub fn parsePalette(str: []const u8) ?Result(Palette) {
+pub fn parsePalette(allocator: *mem.Allocator, str: []const u8) Error!Result(Palette) {
     const Pair = struct {
         k: []const u8,
         v: Value,
 
-        fn getSingle(self: @This()) ?Color {
+        fn getSingle(self: @This()) Error!Color {
             switch (self.v) {
                 .Single => |c| return c,
-                else => return null,
+                else => return Error.ParserFailed,
             }
         }
 
-        fn getArray(self: @This()) ?[16]Color {
+        fn getArray(self: @This()) Error![16]Color {
             switch (self.v) {
                 .Array => |c| return c,
-                else => return null,
+                else => return Error.ParserFailed,
             }
         }
     };
@@ -219,56 +224,62 @@ pub fn parsePalette(str: []const u8) ?Result(Palette) {
     };
 
     const pairP = comptime map(Pair, toStruct(Pair), combine(.{ key, value }));
-    const protoP = comptime map(Prototype, toStruct(Prototype), combine(.{ discard(ws), section, manyN(4, pairP), discard(ws) }));
+    const protoP = comptime map(Prototype, toStruct(Prototype), combine(.{
+        discard(ws),
+        section,
+        manyN(pairP, 4, .{}),
+        discard(ws),
+    }));
 
-    if (protoP(str)) |proto| {
+    if (protoP(allocator, str)) |proto| {
         var result: Palette = undefined;
         result.name = proto.value.name;
         for (proto.value.pairs) |p| {
             if (mem.eql(u8, p.k, "background")) {
-                result.background = p.getSingle() orelse return null;
+                result.background = try p.getSingle();
             } else if (mem.eql(u8, p.k, "foreground")) {
-                result.foreground = p.getSingle() orelse return null;
+                result.foreground = try p.getSingle();
             } else if (mem.eql(u8, p.k, "cursor")) {
-                result.cursor = p.getSingle() orelse return null;
+                result.cursor = try p.getSingle();
             } else if (mem.eql(u8, p.k, "colors")) {
-                result.colors = p.getArray() orelse return null;
+                result.colors = try p.getArray();
             }
         }
-        return Result(Palette).init(result, proto.rest);
-    }
-
-    return null;
+        return Result(Palette){ .value = result, .rest = proto.rest };
+    } else |err| return err;
 }
 
-const solarized = blk: {
+fn genSolarized() !Palette {
     @setEvalBranchQuota(10000);
+    var fail = std.testing.FailingAllocator.init(undefined, 0);
 
-    break :blk Palette{
+    return Palette{
         .name = "default",
-        .background = raw_color("#073642").?.value,
-        .foreground = raw_color("#fdf6e3").?.value,
-        .cursor = raw_color("#dc322f").?.value,
+        .background = (try raw_color(&fail.allocator, "#073642")).value,
+        .foreground = (try raw_color(&fail.allocator, "#fdf6e3")).value,
+        .cursor = (try raw_color(&fail.allocator, "#dc322f")).value,
         .colors = [16]Color{
-            raw_color("#073642").?.value,
-            raw_color("#dc322f").?.value,
-            raw_color("#859900").?.value,
-            raw_color("#b58900").?.value,
-            raw_color("#268bd2").?.value,
-            raw_color("#d33682").?.value,
-            raw_color("#2aa198").?.value,
-            raw_color("#eee8d5").?.value,
-            raw_color("#6c7c80").?.value,
-            raw_color("#dc322f").?.value,
-            raw_color("#859900").?.value,
-            raw_color("#b58900").?.value,
-            raw_color("#268bd2").?.value,
-            raw_color("#d33682").?.value,
-            raw_color("#2aa198").?.value,
-            raw_color("#eee8d5").?.value,
+            (try raw_color(&fail.allocator, "#073642")).value,
+            (try raw_color(&fail.allocator, "#dc322f")).value,
+            (try raw_color(&fail.allocator, "#859900")).value,
+            (try raw_color(&fail.allocator, "#b58900")).value,
+            (try raw_color(&fail.allocator, "#268bd2")).value,
+            (try raw_color(&fail.allocator, "#d33682")).value,
+            (try raw_color(&fail.allocator, "#2aa198")).value,
+            (try raw_color(&fail.allocator, "#eee8d5")).value,
+            (try raw_color(&fail.allocator, "#6c7c80")).value,
+            (try raw_color(&fail.allocator, "#dc322f")).value,
+            (try raw_color(&fail.allocator, "#859900")).value,
+            (try raw_color(&fail.allocator, "#b58900")).value,
+            (try raw_color(&fail.allocator, "#268bd2")).value,
+            (try raw_color(&fail.allocator, "#d33682")).value,
+            (try raw_color(&fail.allocator, "#2aa198")).value,
+            (try raw_color(&fail.allocator, "#eee8d5")).value,
         },
     };
-};
+}
+
+const solarized = genSolarized() catch unreachable;
 
 const solarized_palette_src =
     \\
@@ -277,7 +288,7 @@ const solarized_palette_src =
     \\foreground='#fdf6e3'
     \\cursor='#dc322f'
     \\colors = [
-    \\  '#073642',
+    \\'#073642',
     \\'#dc322f',
     \\'#859900',
     \\'#b58900',
@@ -298,58 +309,61 @@ const solarized_palette_src =
 ;
 
 test "pal.parser.parsePalette" {
-    const result = parsePalette(solarized_palette_src);
-    std.testing.expect(result != null);
+    const result = try parsePalette(undefined, solarized_palette_src);
 
     // expectEquals only check for pointer equality
     // so we have to do this manually
-    std.testing.expectEqualSlices(u8, solarized.name, result.?.value.name);
-    std.testing.expectEqual(solarized.background, result.?.value.background);
-    std.testing.expectEqual(solarized.foreground, result.?.value.foreground);
-    std.testing.expectEqual(solarized.cursor, result.?.value.cursor);
-    std.testing.expectEqual(solarized.colors, result.?.value.colors);
+    try std.testing.expectEqualSlices(u8, solarized.name, result.value.name);
+    try std.testing.expectEqual(solarized.background, result.value.background);
+    try std.testing.expectEqual(solarized.foreground, result.value.foreground);
+    try std.testing.expectEqual(solarized.cursor, result.value.cursor);
+    try std.testing.expectEqual(solarized.colors, result.value.colors);
 }
 
 pub fn consume(
     comptime parser: anytype,
+    allocator: *mem.Allocator,
     slice: []ParserResult(@TypeOf(parser)),
     str: []const u8,
-) ?Result([]ParserResult(@TypeOf(parser))) {
+) Error!Result([]ParserResult(@TypeOf(parser))) {
     const Slice = []ParserResult(@TypeOf(parser));
     var idx: usize = 0;
     var rem = str;
-    while (parser(rem)) |r| : (idx += 1) {
+    while (parser(allocator, rem)) |r| : ({
+        idx += 1;
+        rem = r.rest;
+    }) {
         if (idx >= slice.len) {
             break;
         } else {
             slice[idx] = r.value;
-            rem = r.rest;
+            if (r.rest.len == 0) break;
         }
-    }
+    } else |err| return err;
 
-    return Result(Slice).init(slice[0..idx], rem);
+    return Result(Slice){ .value = slice[0..idx], .rest = rem };
 }
 
 test "pal.parser.consume" {
+    var fail = std.testing.FailingAllocator.init(std.testing.allocator, 0);
     const p = comptime ascii.range('a', 'z');
     var arr: [3]u8 = undefined;
-    const res = consume(p, &arr, "aaaa");
-    std.testing.expect(res != null);
-    std.testing.expectEqualSlices(u8, "aaa", arr[0..]);
-    std.testing.expectEqualSlices(u8, arr[0..], res.?.value);
-    std.testing.expectEqualSlices(u8, "a", res.?.rest);
+    const res = try consume(p, &fail.allocator, &arr, "aaaa");
+    try std.testing.expectEqualSlices(u8, "aaa", arr[0..]);
+    try std.testing.expectEqualSlices(u8, arr[0..], res.value);
+    try std.testing.expectEqualSlices(u8, "a", res.rest);
 }
 
 test "pal.parser.parsePalette+consume" {
-    var palettes: [2]Palette = undefined;
-    const result = consume(parsePalette, &palettes, solarized_palette_src ** 2);
-    std.testing.expect(result != null);
-
-    for (result.?.value) |r| {
-        std.testing.expectEqualSlices(u8, solarized.name, r.name);
-        std.testing.expectEqual(solarized.background, r.background);
-        std.testing.expectEqual(solarized.foreground, r.foreground);
-        std.testing.expectEqual(solarized.cursor, r.cursor);
-        std.testing.expectEqual(solarized.colors, r.colors);
+    const N = 2;
+    var fail = std.testing.FailingAllocator.init(std.testing.allocator, 0);
+    var palettes: [N]Palette = undefined;
+    const result = try consume(parsePalette, &fail.allocator, &palettes, solarized_palette_src ** N);
+    for (result.value) |r| {
+        try std.testing.expectEqualSlices(u8, solarized.name, r.name);
+        try std.testing.expectEqual(solarized.background, r.background);
+        try std.testing.expectEqual(solarized.foreground, r.foreground);
+        try std.testing.expectEqual(solarized.cursor, r.cursor);
+        try std.testing.expectEqual(solarized.colors, r.colors);
     }
 }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 emekoi
+//  Copyright (c) 2020-2021 emekoi
 //
 //  This library is free software; you can redistribute it and/or modify it
 //  under the terms of the MIT license. See LICENSE for details.
@@ -31,10 +31,11 @@ pub const Color = struct {
         options: std.fmt.FormatOptions,
         out_stream: anytype,
     ) !void {
+        _ = options;
         if (comptime std.mem.eql(u8, fmt, "x")) {
             try std.fmt.format(out_stream, "#{x:0>2}{x:0>2}{x:0>2}", .{ self.r, self.g, self.b });
         } else {
-            try std.fmt.format(out_stream, "{};{};{}", .{ self.r, self.g, self.b });
+            try std.fmt.format(out_stream, "{d};{d};{d}", .{ self.r, self.g, self.b });
         }
     }
 };
@@ -51,12 +52,12 @@ pub const Palette = struct {
         var i: usize = 0;
 
         while (i < 8) : (i += 1) {
-            try std.fmt.format(out_stream, "\x1b[48;5;{}m  \x1b[0m", .{i});
+            try std.fmt.format(out_stream, "\x1b[48;5;{d}m  \x1b[0m", .{i});
         }
         try std.fmt.format(out_stream, "\n", .{});
 
         while (i < 16) : (i += 1) {
-            try std.fmt.format(out_stream, "\x1b[48;5;{}m  \x1b[0m", .{i});
+            try std.fmt.format(out_stream, "\x1b[48;5;{d}m  \x1b[0m", .{i});
         }
     }
 
@@ -64,7 +65,7 @@ pub const Palette = struct {
     pub fn reset(out_stream: anytype) !void {
         var i: usize = 0;
         while (i < 16) : (i += 1) {
-            try std.fmt.format(out_stream, "\x1b]104;{}\x1b\\", .{i});
+            try std.fmt.format(out_stream, "\x1b]104;{d}\x1b\\", .{i});
         }
         try std.fmt.format(out_stream, "\x1b]110\x1b\\", .{});
         try std.fmt.format(out_stream, "\x1b]111\x1b\\", .{});
@@ -72,7 +73,7 @@ pub const Palette = struct {
     }
 
     pub fn preview(self: Palette, out_stream: anytype) !void {
-        try std.fmt.format(out_stream, "{}\n", .{self.name});
+        try std.fmt.format(out_stream, "{s}\n", .{self.name});
         for (self.colors[0..8]) |c| {
             try std.fmt.format(out_stream, "\x1b[48;2;{}m  \x1b[0m", .{c});
         }
@@ -84,7 +85,7 @@ pub const Palette = struct {
 
     pub fn apply(self: Palette, out_stream: anytype) !void {
         for (self.colors[0..16]) |c, i| {
-            try std.fmt.format(out_stream, "\x1b]4;{};{x}\x1b\\", .{ i, c });
+            try std.fmt.format(out_stream, "\x1b]4;{d};{x}\x1b\\", .{ i, c });
         }
         try std.fmt.format(out_stream, "\x1b]10;{x}\x1b\\", .{self.foreground});
         try std.fmt.format(out_stream, "\x1b]11;{x}\x1b\\", .{self.background});
@@ -97,15 +98,16 @@ pub const Palette = struct {
         options: std.fmt.FormatOptions,
         out_stream: anytype,
     ) !void {
+        _ = options;
         if (comptime std.mem.eql(u8, fmt, "x")) {
             try self.apply(out_stream);
         } else if (comptime std.mem.eql(u8, fmt, "s")) {
-            try std.fmt.format(out_stream, "[{}]\n", .{self.name});
+            try std.fmt.format(out_stream, "[{s}]\n", .{self.name});
             try std.fmt.format(out_stream, "foreground = \"{x}\"\n", .{self.foreground});
             try std.fmt.format(out_stream, "background = \"{x}\"\n", .{self.background});
             try std.fmt.format(out_stream, "cursor = \"{x}\"\n", .{self.cursor});
             try std.fmt.format(out_stream, "colors = [\n", .{});
-            for (self.colors[0..16]) |c, i| {
+            for (self.colors[0..16]) |c| {
                 try std.fmt.format(out_stream, "  \"{x}\",\n", .{c});
             }
             try std.fmt.format(out_stream, "]", .{});
@@ -145,55 +147,55 @@ pub const Palette = struct {
     }
 };
 
-pub const PaleteSet = struct {
+pub const PaletteSet = struct {
     const Map = std.StringHashMap(Palette);
     const List = std.ArrayList([]const u8);
 
+    // the Map does not free keys or values so we use the List to track values
     allocator: *mem.Allocator,
     profiles: List,
     palettes: Map,
 
-    pub fn init(allocator: *mem.Allocator) PaleteSet {
-        return PaleteSet{
+    pub fn init(allocator: *mem.Allocator) PaletteSet {
+        return PaletteSet{
             .allocator = allocator,
             .palettes = Map.init(allocator),
             .profiles = List.init(allocator),
         };
     }
 
-    pub fn add(self: *PaleteSet, name: []const u8, reader: Reader) !void {
+    pub fn add(self: *PaletteSet, name: []const u8, reader: Reader) !void {
         var buf = try reader.readAllAlloc(self.allocator, std.math.maxInt(usize));
         defer self.allocator.free(buf);
 
         var rem = @as([]const u8, buf);
-        while (parser.parsePalette(rem)) |*r| {
+        while (parser.parsePalette(undefined, rem)) |*r| : (rem = r.rest) {
             var new_name = try self.profiles.addOne();
-            new_name.* = try std.fmt.allocPrint(self.allocator, "{}:{}", .{ name, r.value.name });
+            new_name.* = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ name, r.value.name });
             if (std.mem.eql(u8, r.value.name, "default")) {
                 r.value.name = new_name.*[0..name.len];
             } else {
                 r.value.name = new_name.*;
             }
             try self.palettes.put(new_name.*, r.value);
-            rem = r.rest;
-        } else {
+        } else |_| {
             if (rem.len != 0) {
                 return error.InvalidPalette;
             }
         }
     }
 
-    pub fn get(self: *PaleteSet, name: []const u8) ?Palette {
+    pub fn get(self: *PaletteSet, name: []const u8) ?Palette {
         if (self.palettes.get(name)) |p| {
             return p;
         } else {
-            const full_name = std.fmt.allocPrint(self.allocator, "{}:default", .{name}) catch return null;
+            const full_name = std.fmt.allocPrint(self.allocator, "{s}:default", .{name}) catch return null;
             defer self.allocator.free(full_name);
             return self.palettes.get(full_name);
         }
     }
 
-    pub fn deinit(self: *PaleteSet) void {
+    pub fn deinit(self: *PaletteSet) void {
         self.palettes.deinit();
         for (self.profiles.items) |n| {
             self.allocator.free(n);

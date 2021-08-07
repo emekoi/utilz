@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 emekoi
+//  Copyright (c) 2020-2021 emekoi
 //
 //  This library is free software; you can redistribute it and/or modify it
 //  under the terms of the MIT license. See LICENSE for details.
@@ -25,13 +25,14 @@ const fs = std.fs;
 const mem = std.mem;
 const io = std.io;
 
+pub const u8x4 = std.meta.Vector(4, u8);
+const u5x4 = std.meta.Vector(4, u5);
+
 pub const Format = enum {
     RGBA,
     ARGB,
     ABGR,
     BGRA,
-
-    const u5x4 = std.meta.Vector(4, u5);
 
     pub fn shiftMask(self: Format) u5x4 {
         return switch (self) {
@@ -143,4 +144,23 @@ pub const Image = struct {
             return error.StbError;
         }
     }
+
+    // is this okay to do?
+    pub fn asVectors(self: Image, cast: bool) ![]u8x4 {
+        if (!cast) {
+            var src_32 = @ptrCast([*]const u32, @alignCast(@alignOf([*]u32), self.bytes.ptr))[0 .. self.bytes.len / 4];
+            var result = self.allocator.alloc(std.meta.Vector(4, u8), src_32.len);
+            for (src_32) |s, i| {
+                // the 2 lowest bytes contain the channels we want
+                const v = (@splat(4, s) >> Format.RGBA.shiftMask());
+                // mask to get those channels
+                result[i] = v & @splat(4, @as(u32, 0xff));
+            }
+            return result;
+        } else {
+            return @ptrCast([*]u8x4, @alignCast(@alignOf([*]u8x4), self.bytes.ptr))[0 .. self.bytes.len / 4];
+        }
+    }
 };
+
+test "asVectors" {}

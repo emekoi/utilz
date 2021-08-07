@@ -8,7 +8,7 @@ pub fn install(known: anytype) fn (b: *build.Builder) anyerror!void {
                 var dir_step = b.addInstallDirectory(.{
                     .source_dir = "pal/palettes",
                     .install_subdir = "pal/palettes",
-                    .install_dir = build.InstallDir{ .Custom = dir },
+                    .install_dir = build.InstallDir{ .custom = dir },
                 });
 
                 const install_step = b.step("install-palettes", "install included palettes for pal");
